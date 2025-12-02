@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>时区功能测试</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .timezone-selector { margin: 20px 0; }
+        .test-result { margin: 20px 0; padding: 10px; background: #f0f0f0; }
+        select { padding: 5px; margin: 0 10px; }
+        button { padding: 5px 10px; margin: 0 5px; }
+    </style>
+</head>
+<body>
+    <h1>时区功能测试</h1>
+    
+    <div class="timezone-selector">
+        <label>选择时区:</label>
+        <select id="timezone-select">
+            <option value="EST">EST (Eastern Standard Time)</option>
+            <option value="PST">PST (Pacific Standard Time)</option>
+            <option value="CST">CST (Central Standard Time)</option>
+            <option value="MST">MST (Mountain Standard Time)</option>
+            <option value="UTC">UTC</option>
+        </select>
+        <button onclick="testTimezone()">测试时区</button>
+        <button onclick="changeTimezone()">切换时区</button>
+    </div>
+    
+    <div class="test-result" id="test-result">
+        <h3>测试结果:</h3>
+        <p>选择一个时区并点击测试按钮</p>
+    </div>
+    
+    <script>
+        // 模拟Unix时间戳（当前时间）
+        const testTimestamp = Date.now();
+        
+        // 时区转换函数（从index.js复制）
+        function formatUnixTime(unixTimestamp, timezone = 'EST') {
+            if (!unixTimestamp) return '';
+            
+            const date = new Date(parseInt(unixTimestamp));
+            if (isNaN(date.getTime())) return '';
+            
+            let adjustedDate = date;
+            
+            switch (timezone.toUpperCase()) {
+                case 'EST':
+                    adjustedDate = new Date(date.getTime() - (5 * 60 * 60 * 1000));
+                    break;
+                case 'PST':
+                    adjustedDate = new Date(date.getTime() - (8 * 60 * 60 * 1000));
+                    break;
+                case 'CST':
+                    adjustedDate = new Date(date.getTime() - (6 * 60 * 60 * 1000));
+                    break;
+                case 'MST':
+                    adjustedDate = new Date(date.getTime() - (7 * 60 * 60 * 1000));
+                    break;
+                case 'UTC':
+                    adjustedDate = date;
+                    break;
+                default:
+                    adjustedDate = date;
+            }
+            
+            const hours = adjustedDate.getUTCHours().toString().padStart(2, '0');
+            const minutes = adjustedDate.getUTCMinutes().toString().padStart(2, '0');
+            const seconds = adjustedDate.getUTCSeconds().toString().padStart(2, '0');
+            
+            return `${hours}:${minutes}:${seconds}`;
+        }
+        
+        function testTimezone() {
+            const selectedTimezone = document.getElementById('timezone-select').value;
+            const result = formatUnixTime(testTimestamp, selectedTimezone);
+            
+            const testResult = document.getElementById('test-result');
+            testResult.innerHTML = `
+                <h3>测试结果:</h3>
+                <p><strong>原始时间戳:</strong> ${testTimestamp}</p>
+                <p><strong>选择时区:</strong> ${selectedTimezone}</p>
+                <p><strong>转换后时间:</strong> ${result}</p>
+                <p><strong>当前本地时间:</strong> ${new Date().toLocaleTimeString()}</p>
+            `;
+        }
+        
+        function changeTimezone() {
+            const selectedTimezone = document.getElementById('timezone-select').value;
+            console.log(`时区已切换到: ${selectedTimezone}`);
+            testTimezone();
+        }
+        
+        // 页面加载完成后自动测试
+        $(document).ready(function() {
+            testTimezone();
+        });
+    </script>
+</body>
+</html>
+
+
