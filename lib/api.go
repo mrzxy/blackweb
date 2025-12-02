@@ -175,8 +175,8 @@ func queryOptionTrades(c *gin.Context) {
 	result := make([]queryOptionTradesResp, len(trades))
 	for k, v := range trades {
 		// 将 int64 时间戳转换为 time.Time
-		creationTime := time.Unix(v.CreationDate, 0)
-		expirationTime := time.Unix(v.Expiration, 0)
+		creationTime := time.UnixMilli(v.CreationDate)
+		expirationTime := time.UnixMilli(v.Expiration / 1000)
 
 		result[k] = queryOptionTradesResp{
 			Time:         creationTime.UTC().Format("15:04:05"),
