@@ -272,9 +272,9 @@ function renderTable(data) {
         }
         
         row.innerHTML = `
-            <td class="time">${formatUnixTime(item.Time)}</td>
+            <td class="time">${item.Time}</td>
             <td class="symbol">${item.Symbol || ''}</td>
-            <td>${formatExp(item.Exp)}</td>
+            <td>${item.Exp}</td>
             <td class="strike">${formatStrike(item.Strike)}</td>
             <td class="cp cp-${(item.CP || '').toLowerCase()}" style="color: ${(item.CP || '').toUpperCase() === 'CALL' ? 'lightgreen' : 'red'}">${item.CP || ''}</td>
             <td class="spot">${formatSpot(item.Spot)}</td>
