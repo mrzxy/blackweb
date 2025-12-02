@@ -13,6 +13,8 @@ import (
 	"github.com/shopspring/decimal"
 )
 
+var login_token string
+
 // API响应结构
 type APIResponse []TradeData
 
@@ -46,6 +48,25 @@ type TradeData struct {
 	Oi                int     `json:"oi"`
 	Itm               int     `json:"itm"`
 	Ex                int     `json:"ex"`
+}
+
+// 登录请求体结构
+type LoginRequest struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+	Device   string `json:"device"`
+}
+
+// 登录响应结构
+type LoginResponse struct {
+	Data struct {
+		AccessToken  string `json:"accessToken"`
+		RefreshToken string `json:"refreshToken"`
+		ExpiresIn    int    `json:"expiresIn"`
+		TokenType    string `json:"tokenType"`
+	} `json:"data"`
+	Success bool   `json:"success"`
+	Error   string `json:"error"`
 }
 
 // 请求体结构
@@ -273,32 +294,56 @@ func sendHTTPRequest(requestBody RequestBody) ([]byte, error) {
 		return nil, err
 	}
 
-	req, err := http.NewRequest("POST", "https://api.blackboxstocks.com/api/v2/options/getFlowMobile", bytes.NewBuffer(jsonData))
-	if err != nil {
-		return nil, err
+	// 尝试发送请求，最多重试一次
+	for attempt := 0; attempt < 2; attempt++ {
+		req, err := http.NewRequest("POST", "https://api.blackboxstocks.com/api/v2/options/getFlowMobile", bytes.NewBuffer(jsonData))
+		if err != nil {
+			return nil, err
+		}
+
+		// 设置请求头
+		req.Header.Set("accept", "application/json")
+		req.Header.Set("accept-language", "zh-CN,zh;q=0.9")
+		req.Header.Set("authorization", "Bearer "+login_token)
+		req.Header.Set("content-type", "application/json")
+		req.Header.Set("origin", "https://members.blackboxstocks.com")
+		req.Header.Set("referer", "https://members.blackboxstocks.com/")
+		req.Header.Set("user-agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36")
+
+		client := &http.Client{Timeout: 30 * time.Second}
+		resp, err := client.Do(req)
+		if err != nil {
+			return nil, err
+		}
+
+		// 检查状态码
+		if resp.StatusCode == http.StatusUnauthorized {
+			resp.Body.Close()
+			if attempt == 0 {
+				Logger.Infof("收到401未授权响应，等待10秒后重新登录...")
+				time.Sleep(10 * time.Second)
+
+				// 重新登录
+				if err := login(); err != nil {
+					return nil, fmt.Errorf("重新登录失败: %v", err)
+				}
+
+				Logger.Infof("重新登录成功，重试请求...")
+				continue
+			}
+			return nil, fmt.Errorf("HTTP请求失败，状态码: 401 (重试后仍未授权)")
+		}
+
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			return nil, fmt.Errorf("HTTP请求失败，状态码: %d", resp.StatusCode)
+		}
+
+		return io.ReadAll(resp.Body)
 	}
 
-	// 设置请求头
-	req.Header.Set("accept", "application/json")
-	req.Header.Set("accept-language", "zh-CN,zh;q=0.9")
-	req.Header.Set("authorization", "Bearer "+Conf.Token)
-	req.Header.Set("content-type", "application/json")
-	req.Header.Set("origin", "https://members.blackboxstocks.com")
-	req.Header.Set("referer", "https://members.blackboxstocks.com/")
-	req.Header.Set("user-agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36")
-
-	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("HTTP请求失败，状态码: %d", resp.StatusCode)
-	}
-
-	return io.ReadAll(resp.Body)
+	return nil, fmt.Errorf("请求失败")
 }
 
 func saveDataToDB(trades []TradeData) {
@@ -371,7 +416,86 @@ func saveDataToDB(trades []TradeData) {
 	Logger.Infof("数据保存完成: 新增 %d 条，跳过 %d 条", savedCount, skippedCount)
 }
 
+// 登录函数
+func login() error {
+	Logger.Infof("开始登录...")
+
+	// 构建登录请求体
+	loginReq := LoginRequest{
+		Username: Conf.Username,
+		Password: Conf.Password,
+		Device:   "web",
+	}
+
+	jsonData, err := json.Marshal(loginReq)
+	if err != nil {
+		return fmt.Errorf("序列化登录请求失败: %v", err)
+	}
+
+	req, err := http.NewRequest("POST", "https://api.blackboxstocks.com/api/v2/account/login", bytes.NewBuffer(jsonData))
+	if err != nil {
+		return fmt.Errorf("创建登录请求失败: %v", err)
+	}
+
+	// 设置请求头
+	req.Header.Set("accept", "application/json")
+	req.Header.Set("accept-language", "zh-CN,zh;q=0.9")
+	req.Header.Set("authorization", "")
+	req.Header.Set("cache-control", "no-cache")
+	req.Header.Set("content-type", "application/json")
+	req.Header.Set("origin", "https://members.blackboxstocks.com")
+	req.Header.Set("pragma", "no-cache")
+	req.Header.Set("priority", "u=1, i")
+	req.Header.Set("referer", "https://members.blackboxstocks.com/")
+	req.Header.Set("sec-ch-ua", `"Chromium";v="142", "Google Chrome";v="142", "Not_A Brand";v="99"`)
+	req.Header.Set("sec-ch-ua-mobile", "?0")
+	req.Header.Set("sec-ch-ua-platform", `"macOS"`)
+	req.Header.Set("sec-fetch-dest", "empty")
+	req.Header.Set("sec-fetch-mode", "cors")
+	req.Header.Set("sec-fetch-site", "same-site")
+	req.Header.Set("user-agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36")
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("登录请求失败: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("登录失败，状态码: %d, 响应: %s", resp.StatusCode, string(body))
+	}
+
+	// 解析响应
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("读取登录响应失败: %v", err)
+	}
+
+	var loginResp LoginResponse
+	if err := json.Unmarshal(body, &loginResp); err != nil {
+		return fmt.Errorf("解析登录响应失败: %v", err)
+	}
+
+	if !loginResp.Success {
+		return fmt.Errorf("登录失败: %s", loginResp.Error)
+	}
+
+	// 更新配置中的token
+	login_token = loginResp.Data.AccessToken
+	Logger.Infof("登录成功，获取到accessToken")
+
+	return nil
+}
+
 func RunSpider() {
+	// 先登录
+	if err := login(); err != nil {
+		Logger.Infof("登录失败: %v", err)
+		return
+	}
+
 	// 启动定时任务
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()

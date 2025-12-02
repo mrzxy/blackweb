@@ -12,9 +12,10 @@ var (
 )
 
 type Config struct {
-	Port  int    `mapstructure:"port"`
-	DSN   string `mapstructure:"dsn"`
-	Token string `mapstructure:"token"`
+	Port     int    `mapstructure:"port"`
+	DSN      string `mapstructure:"dsn"`
+	Username string `mapstructure:"username"`
+	Password string `mapstructure:"password"`
 }
 
 var (
