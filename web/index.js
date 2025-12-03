@@ -5,6 +5,8 @@ let isLoading = false;
 let currentTimezone = 'EST'; // 默认时区
 let lastCreationEpochSec = 0; // 增量拉取基准（秒，UTC当日）
 let pollTimerId = null; // 定时器ID
+let currentOffset = 0; // 当前加载的偏移量
+let hasMoreData = true; // 是否还有更多数据
 
 // DOM元素
 let tableBody, filterBtn, filterModal, saveBtn, applyBtn, resetBtn, cancelBtn, searchBox, tableContainer, loading, loader;
@@ -115,7 +117,7 @@ function bindEvents() {
 }
 
 // 加载交易数据
-function loadTradeData(queryConfig, is_incremental) {
+function loadTradeData(queryConfig, is_incremental, is_load_more) {
 
 	let req = {
 		"limit": 100, // 默认限制
@@ -127,6 +129,7 @@ function loadTradeData(queryConfig, is_incremental) {
 	post('/api/option-trades', req, function(resp) {
 		if (resp.code === 200) {
 			if (is_incremental) {
+				// 增量更新（新数据插入到顶部）
 				if (Array.isArray(resp.data) && resp.data.length > 0) {
 					for (let i = resp.data.length - 1; i >= 0; i--) {
 						trade_data.unshift(resp.data[i]);
@@ -134,10 +137,23 @@ function loadTradeData(queryConfig, is_incremental) {
 					visibleData = [...trade_data];
 					renderTable(visibleData);
 				}
+			} else if (is_load_more) {
+				// 加载更多（追加到底部）
+				if (Array.isArray(resp.data) && resp.data.length > 0) {
+					trade_data = trade_data.concat(resp.data);
+					visibleData = [...trade_data];
+					renderTable(visibleData);
+					currentOffset += resp.data.length; // 更新偏移量
+					hasMoreData = resp.data.length === req.limit; // 如果返回数据少于limit，说明没有更多数据了
+				} else {
+					hasMoreData = false;
+				}
 			} else {
+				// 初始加载
 				trade_data = resp.data;
 				visibleData = [...trade_data];
-
+				currentOffset = resp.data.length; // 更新偏移量
+				hasMoreData = resp.data.length === req.limit;
 				renderTable(visibleData);
 			}
 		} else {
@@ -410,55 +426,33 @@ function formatValue(value) {
 
 // 加载更多数据
 function loadMoreData() {
-    if (isLoading) return;
+    if (isLoading || !hasMoreData) return;
     
     isLoading = true;
     if (loading) loading.style.display = 'block';
     if (loader) loader.style.display = 'block';
     
-    // 模拟数据加载
+    // 获取当前筛选配置
+    let savedFilters = getSelectedFilters();
+    let queryConfig = {
+        offset: currentOffset,
+        limit: 100
+    };
+    
+    if (savedFilters) {
+        queryConfig = { ...queryConfig, ...convertFiltersToQueryRequest(savedFilters) };
+    }
+    
+    // 调用 loadTradeData 并传递 is_load_more=true
+    loadTradeData(queryConfig, false, true);
+    
+    // 注意：isLoading 的重置会在 loadTradeData 的回调中处理
+    // 这里需要在 loadTradeData 完成后重置状态
     setTimeout(() => {
-        const moreData = generateMoreData();
-        visibleData = [...visibleData, ...moreData];
-        renderTable(visibleData);
-        
         isLoading = false;
         if (loading) loading.style.display = 'none';
         if (loader) loader.style.display = 'none';
-    }, 1000);
-}
-
-// 生成更多数据
-function generateMoreData() {
-    const additionalData = [];
-    const symbols = ['BAC', 'C', 'WMT', 'XOM', 'CVX', 'INTC', 'CSCO', 'ORCL', 'VZ', 'T', 'KO', 'PEP', 'WFC', 'GM'];
-    
-    for (let i = 0; i < 10; i++) {
-        const randomSymbol = symbols[Math.floor(Math.random() * symbols.length)];
-        const randomTime = `${Math.floor(Math.random() * 3) + 3}:${Math.floor(Math.random() * 60)}:${Math.floor(Math.random() * 60)}`;
-        const randomExp = ['08/25', '09/01', '09/15', '10/20'][Math.floor(Math.random() * 4)];
-        const randomStrike = Math.floor(Math.random() * 500) + 50;
-        const randomCP = Math.random() > 0.5 ? 'CALL' : 'PUT';
-        const randomSpot = `$${(randomStrike - 5 + Math.random() * 10).toFixed(2)}`;
-        const randomType = ['BTO', 'STO', 'STC'][Math.floor(Math.random() * 3)];
-        const randomValue = `$${(Math.random() * 2).toFixed(2)}M`;
-        const randomIV = Math.floor(Math.random() * 50) + 5;
-        
-        additionalData.push({
-            time: randomTime,
-            symbol: randomSymbol,
-            exp: randomExp,
-            strike: `$${randomStrike}`,
-            cp: randomCP,
-            spot: randomSpot,
-            details: `${randomSymbol} $${Math.floor(randomStrike - 5)}${randomCP.charAt(0)}`,
-            type: randomType,
-            value: randomValue,
-            iv: randomIV.toString()
-        });
-    }
-    
-    return additionalData;
+    }, 500);
 }
 
 // 应用筛选设置
@@ -469,7 +463,11 @@ function applyFilterSettings() {
         queryConfig = convertFiltersToQueryRequest(savedFilters);
 	}
 
-    loadTradeData(queryConfig, false);
+    // 重置偏移量和状态
+    currentOffset = 0;
+    hasMoreData = true;
+    
+    loadTradeData(queryConfig, false, false);
 }
 
 function getSelectedFilters() {
@@ -670,7 +668,7 @@ function fetchIncrementalData() {
     queryConfig.lastCreationate = last_creation_date
     
 
-    loadTradeData(queryConfig, true);
+    loadTradeData(queryConfig, true, false);
 }
 
 // 启动/重启轮询
